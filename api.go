@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 )
 
 type APIServer struct {
@@ -22,11 +24,18 @@ func NewApiServer(listenAddr string, store Storage) *APIServer {
 	}
 }
 
+func goDotEnvVariable(key string) string {
+	if err := godotenv.Load(".env"); err != nil {
+		log.Fatalf("Error loading .env file")
+	}
+	return os.Getenv(key)
+}
+
 func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
-	router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleGetAccountByID))
+	router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleAccountById))
 
 	log.Println("JSON API server running on port: ", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
@@ -38,8 +47,19 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 		return s.handleGetAccount(w, r)
 	case "POST":
 		return s.handleCreateAccount(w, r)
+	default:
+		return fmt.Errorf("method not allowed %s", r.Method)
+	}
+}
+
+func (s *APIServer) handleAccountById(w http.ResponseWriter, r *http.Request) error {
+	switch r.Method {
+	case "GET":
+		return s.handleGetAccountByID(w, r)
 	case "DELETE":
 		return s.handleDeleteAccount(w, r)
+	// case "PUT":
+		// return s.handleUpdateAccount(w, r)
 	default:
 		return fmt.Errorf("method not allowed %s", r.Method)
 	}
@@ -47,7 +67,6 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
-
 	skip, _ := strconv.Atoi(r.URL.Query().Get("skip"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
@@ -67,11 +86,9 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 }
 
 func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error {
-	idStr := mux.Vars(r)["id"]
-
-	id, err := strconv.Atoi(idStr)
+	id, err := getID(r)
 	if err != nil {
-		return fmt.Errorf("invalid id given %s", idStr)
+		return err
 	}
 
 	account, err := s.store.GetAccountByID(id)
@@ -80,6 +97,7 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 	}
 
 	return WriteJSON(w, http.StatusOK, account)
+
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
@@ -92,11 +110,18 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 	if err := s.store.CreateAccount(account); err != nil {
 		return err
 	}
-	return WriteJSON(w, http.StatusOK, account)
+	return WriteJSON(w, http.StatusCreated, account)
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	id, err := getID(r)
+	if err != nil {
+		return err
+	}
+	if err := s.store.DeleteAccount(id); err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, "Deleted successfully")
 }
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
@@ -122,4 +147,13 @@ func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
 			WriteJSON(w, http.StatusBadRequest, APIError{Error: err.Error()})
 		}
 	}
+}
+
+func getID(r *http.Request) (int, error) {
+	idStr := mux.Vars(r)["id"]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return id, fmt.Errorf("invalid id given %s", idStr)
+	}
+	return id, nil
 }

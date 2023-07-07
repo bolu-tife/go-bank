@@ -16,6 +16,7 @@ type Account struct {
 	Number    int64     `json:"number"`
 	Balance   int64     `json:"balance"`
 	CreatedAt time.Time `json:"createdAt"`
+	Deleted   bool      `json:"deleted"`
 }
 
 func NewAccount(firstName, lastName string) *Account {

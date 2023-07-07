@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
 	_ "github.com/lib/pq"
 )
@@ -21,11 +20,12 @@ type PostgressStore struct {
 }
 
 func NewPostgressStore() (*PostgressStore, error) {
-	username := os.Getenv("APP_DB_USERNAME")
-	password := os.Getenv("APP_DB_PASSWORD")
-	db_name := os.Getenv("APP_DB_NAME")
+	username := goDotEnvVariable("APP_DB_USERNAME")
+	password := goDotEnvVariable("APP_DB_PASSWORD")
+	db_name := goDotEnvVariable("APP_DB_NAME")
+	ssl_mode := goDotEnvVariable("SSL_MODE")
 
-	connStr := fmt.Sprintf("user=%s dbname=%s password=%s sslmode=disable", username, db_name, password)
+	connStr := fmt.Sprintf("user=%s dbname=%s password=%s sslmode=%s", username, db_name, password, ssl_mode)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,8 @@ func (s *PostgressStore) CreateAccountTable() error {
 		last_name varchar(50),
 		number serial,
 		balance serial,
-		created_at timestamp
+		created_at timestamp,
+		deleted boolean not null
 	)`
 
 	_, err := s.db.Exec(query)
@@ -79,8 +80,9 @@ func (s *PostgressStore) CreateAccount(acc *Account) error {
 	return nil
 }
 
-func (s *PostgressStore) DeleteAccount(int) error {
-	return nil
+func (s *PostgressStore) DeleteAccount(id int) error {
+	_, err := s.db.Query("update account set deleted=true where id=$1 and deleted=false", id)
+	return err
 }
 
 func (s *PostgressStore) UpdateAccount(*Account) error {
@@ -88,20 +90,30 @@ func (s *PostgressStore) UpdateAccount(*Account) error {
 }
 
 func (s *PostgressStore) GetAccountByID(id int) (*Account, error) {
-	rows, err := s.db.Query("select * from account where id = $1", id)
+	rows, err := s.db.Query("select * from account where id = $1 ", id)
 	if err != nil {
 		return nil, err
 	}
 
 	for rows.Next() {
-		return scanIntoAccount(rows)
+		account, err := scanIntoAccount(rows)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if account.Deleted == true {
+			return nil, fmt.Errorf("account %d is deactivated", id)
+		}
+
+		return account, nil
 	}
 
 	return nil, fmt.Errorf("account %d not found", id)
 }
 
 func (s *PostgressStore) GetAccounts(skip, limit int) ([]*Account, error) {
-	query := "select * from account limit $1 offset $2"
+	query := "select * from account where deleted=false limit $1 offset $2"
 	rows, err := s.db.Query(query, limit, skip)
 
 	if err != nil {
@@ -130,6 +142,7 @@ func scanIntoAccount(rows *sql.Rows) (*Account, error) {
 		&account.Number,
 		&account.Balance,
 		&account.CreatedAt,
+		&account.Deleted,
 	)
 
 	return account, err
