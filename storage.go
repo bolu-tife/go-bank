@@ -10,9 +10,11 @@ import (
 type Storage interface {
 	CreateAccount(*Account) error
 	DeleteAccount(int) error
+	ReactivateAccount(int) error
 	UpdateAccount(*Account) error
 	GetAccountByID(int) (*Account, error)
 	GetAccounts(int, int) ([]*Account, error)
+	UpdateAccountDetails(int, string, string) error
 }
 
 type PostgressStore struct {
@@ -85,6 +87,16 @@ func (s *PostgressStore) DeleteAccount(id int) error {
 	return err
 }
 
+func (s *PostgressStore) ReactivateAccount(id int) error {
+	_, err := s.db.Query("update account set deleted=false where id=$1 and deleted=true", id)
+	return err
+}
+
+func (s *PostgressStore) UpdateAccountDetails(id int, firstName, lastName string) error {
+	_, err := s.db.Query("update account set first_name=$1, last_name=$2 where id=$3 and deleted=false", firstName, lastName, id)
+	return err
+}
+
 func (s *PostgressStore) UpdateAccount(*Account) error {
 	return nil
 }
@@ -102,7 +114,7 @@ func (s *PostgressStore) GetAccountByID(id int) (*Account, error) {
 			return nil, err
 		}
 
-		if account.Deleted == true {
+		if account.Deleted {
 			return nil, fmt.Errorf("account %d is deactivated", id)
 		}
 

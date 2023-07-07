@@ -36,6 +36,8 @@ func (s *APIServer) Run() {
 
 	router.HandleFunc("/account", makeHTTPHandleFunc(s.handleAccount))
 	router.HandleFunc("/account/{id}", makeHTTPHandleFunc(s.handleAccountById))
+	router.HandleFunc("/transfer", makeHTTPHandleFunc(s.handleTransfer))
+	router.HandleFunc("/account/{id}/reactivate", makeHTTPHandleFunc(s.handleAccountReactivation))
 
 	log.Println("JSON API server running on port: ", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router)
@@ -58,12 +60,29 @@ func (s *APIServer) handleAccountById(w http.ResponseWriter, r *http.Request) er
 		return s.handleGetAccountByID(w, r)
 	case "DELETE":
 		return s.handleDeleteAccount(w, r)
-	// case "PUT":
-		// return s.handleUpdateAccount(w, r)
+	case "PATCH":
+		return s.handleUpdateAccountDetails(w, r)
 	default:
 		return fmt.Errorf("method not allowed %s", r.Method)
 	}
+}
 
+func (s *APIServer) handleAccountReactivation(w http.ResponseWriter, r *http.Request) error {
+	switch r.Method {
+	case "PATCH":
+		return s.handleReactivateAccount(w, r)
+	default:
+		return fmt.Errorf("method not allowed %s", r.Method)
+	}
+}
+
+func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
+	switch r.Method {
+	case "POST":
+		return s.handleMoneyTransfer(w, r)
+	default:
+		return fmt.Errorf("method not allowed %s", r.Method)
+	}
 }
 
 func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
@@ -97,11 +116,10 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 	}
 
 	return WriteJSON(w, http.StatusOK, account)
-
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
-	createAccountReq := new(CreateAccountRequest)
+	createAccountReq := new(AccountRequest)
 
 	if err := json.NewDecoder(r.Body).Decode(createAccountReq); err != nil {
 		return err
@@ -124,8 +142,43 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 	return WriteJSON(w, http.StatusOK, "Deleted successfully")
 }
 
-func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
-	return nil
+func (s *APIServer) handleReactivateAccount(w http.ResponseWriter, r *http.Request) error {
+	id, err := getID(r)
+	if err != nil {
+		return err
+	}
+	if err := s.store.ReactivateAccount(id); err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, "Account reactivated successfully")
+}
+
+func (s *APIServer) handleUpdateAccountDetails(w http.ResponseWriter, r *http.Request) error {
+	id, err := getID(r)
+	if err != nil {
+		return err
+	}
+
+	updateAccountReq := new(AccountRequest)
+	if err := json.NewDecoder(r.Body).Decode(updateAccountReq); err != nil {
+		return err
+	}
+
+	if err := s.store.UpdateAccountDetails(id, updateAccountReq.FirstName, updateAccountReq.LastName); err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, "Account updated successfully")
+}
+
+func (s *APIServer) handleMoneyTransfer(w http.ResponseWriter, r *http.Request) error {
+	transferReq := new(TransferRequest)
+	if err := json.NewDecoder(r.Body).Decode(transferReq); err != nil {
+		return err
+	}
+
+	defer r.Body.Close()
+	return WriteJSON(w, http.StatusOK, transferReq)
 }
 
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
