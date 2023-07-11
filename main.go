@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
-	"os"
 )
 
 func main() {
+	seed := flag.Bool("seed", false, "seed the db")
+	flag.Parse()
+
 	store, err := NewPostgressStore()
 
 	if err != nil {
@@ -17,7 +20,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	port := fmt.Sprintf(":%s", os.Getenv("PORT"))
+	if *seed {
+		fmt.Println("seeding the database")
+		seedAccounts(store)
+	}
+
+	port := fmt.Sprintf(":%s", goDotEnvVariable("PORT"))
 	server := NewApiServer(port, store)
 	server.Run()
 }

@@ -1,4 +1,4 @@
-# Simple Web Server in Go
+# Simple CRUD app in Go
 
 
 ## Usage
@@ -13,7 +13,7 @@
 - `main.go`: Contains the code for the web server.
 - `about.html`: A simple HTML file served by the server.
 ## Note 
-You can choose to run it on docker 
+You can choose to run postgres on docker 
 
 ## License
 
